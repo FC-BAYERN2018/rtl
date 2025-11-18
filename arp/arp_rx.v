@@ -39,7 +39,7 @@ module arp_rx
    output  reg  [31:0]  src_ip       //接收到的源IP地址
    );
 
-//parameter define
+//parameter define独热码 （one-hot）定义5个状态，每个状态只有1位为1
 localparam  st_idle     = 5'b0_0001; //初始状态，等待接收前导码
 localparam  st_preamble = 5'b0_0010; //接收前导码状态 
 localparam  st_eth_head = 5'b0_0100; //接收以太网帧头
@@ -139,11 +139,11 @@ always @(posedge clk or negedge rst_n) begin
         arp_rx_done <= 1'b0;
         case(next_state)
             st_idle : begin                                  //检测到第一个8'h55
-                if((gmii_rx_dv == 1'b1) && (gmii_rxd == 8'h55)) 
-                    skip_en <= 1'b1;
+                if((gmii_rx_dv == 1'b1) && (gmii_rxd == 8'h55)) //以太网帧的开始标志（0x55）
+                    skip_en <= 1'b1;                //设置 skip_en 准备进入下一状态
 				else;
             end
-            st_preamble : begin
+            st_preamble : begin                                //解析以太网前导码（7个0x55 + 1个0xD5）
                 if(gmii_rx_dv) begin                         //解析前导码
                     cnt <= cnt + 5'd1;
                     if((cnt < 5'd6) && (gmii_rxd != 8'h55))  //7个8'h55  
@@ -163,6 +163,8 @@ always @(posedge clk or negedge rst_n) begin
                 if(gmii_rx_dv) begin
                     cnt <= cnt + 5'b1;
                     if(cnt < 5'd6) 
+                        //取出当前MAC地址的低40位（去掉最高8位）,将新接收的字节拼接到最低位
+                        //效果： 将MAC地址向左移动8位，新字节填入最低位
                         des_mac_t <= {des_mac_t[39:0],gmii_rxd};
                     else if(cnt == 5'd6) begin
                         //判断MAC地址是否为开发板MAC地址或者公共地址

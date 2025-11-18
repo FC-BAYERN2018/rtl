@@ -186,7 +186,7 @@ always @(posedge clk or negedge rst_n) begin
         arp_data[4] <= 8'h06;               //硬件地址长度,6
         arp_data[5] <= 8'h04;               //协议地址长度,4
         arp_data[6] <= 8'h00;               //OP,操作码 8'h01：ARP请求 8'h02:ARP应答
-        arp_data[7] <= 8'h01;
+        arp_data[7] <= 8'h01;               //复位时的默认值 ，实际的ARP操作码是在发送时根据 arp_tx_type 信号动态设置的。
         arp_data[8] <= BOARD_MAC[47:40];    //发送端(源)MAC地址
         arp_data[9] <= BOARD_MAC[39:32];
         arp_data[10] <= BOARD_MAC[31:24];
@@ -237,6 +237,7 @@ always @(posedge clk or negedge rst_n) begin
                         arp_data[27] <= des_ip[7:0];
                     end
 					else;
+                    //根据arp_tx_type设置ARP操作码
                     if(arp_tx_type == 1'b0)
                         arp_data[7] <= 8'h01;            //ARP请求 
                     else 
@@ -245,20 +246,20 @@ always @(posedge clk or negedge rst_n) begin
 				else;
             end                                                                   
             st_preamble : begin                          //发送前导码+帧起始界定符
-                gmii_tx_en <= 1'b1;
-                gmii_txd <= preamble[cnt];
-                if(cnt == 6'd7) begin                        
-                    skip_en <= 1'b1;
+                gmii_tx_en <= 1'b1;                     //使能数据输出
+                gmii_txd <= preamble[cnt];              //发送前导码字节
+                if(cnt == 6'd7) begin                   //发送完8字节前导码     
+                    skip_en <= 1'b1;                    //准备进入下一状态
                     cnt <= 1'b0;    
                 end
                 else    
-                    cnt <= cnt + 1'b1;                     
+                    cnt <= cnt + 1'b1;                  //继续发送    
             end
-            st_eth_head : begin                          //发送以太网首部
+            st_eth_head : begin                          //发送以太网帧头
                 gmii_tx_en <= 1'b1;
-                crc_en <= 1'b1;
-                gmii_txd <= eth_head[cnt];
-                if (cnt == 6'd13) begin
+                crc_en <= 1'b1;                         //启动CRC计算
+                gmii_txd <= eth_head[cnt];              //发送以太网帧头
+                if (cnt == 6'd13) begin                 //发送完14字节帧头
                     skip_en <= 1'b1;
                     cnt <= 1'b0;
                 end    
@@ -266,9 +267,9 @@ always @(posedge clk or negedge rst_n) begin
                     cnt <= cnt + 1'b1;    
             end                    
             st_arp_data : begin                          //发送ARP数据  
-                crc_en <= 1'b1;
+                crc_en <= 1'b1;                         //继续CRC计算
                 gmii_tx_en <= 1'b1;
-                //至少发送46个字节
+                //确保至少发送46个字节（以太网最小帧长要求）
                 if (cnt == MIN_DATA_NUM - 1'b1) begin    
                     skip_en <= 1'b1;
                     cnt <= 1'b0;
@@ -276,7 +277,7 @@ always @(posedge clk or negedge rst_n) begin
                 end    
                 else    
                     cnt <= cnt + 1'b1;  
-                if(data_cnt <= 6'd27) begin
+                if(data_cnt <= 6'd27) begin             //发送ARP数据（28字节）
                     data_cnt <= data_cnt + 1'b1;
                     gmii_txd <= arp_data[data_cnt];
                 end    
